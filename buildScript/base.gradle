@@ -1,0 +1,391 @@
+//plugins {
+//  id 'java'
+//  id 'org.springframework.boot' version "${springbootVersion}"
+//  id 'io.spring.dependency-management' version "${springDependencyManagementVersion}"
+//}
+
+//apply plugin: 'java'
+apply plugin: 'java-library'
+
+//ext {
+//  springbootVersion = "3.2.2"
+//  springDependencyManagementVersion = "1.1.4"
+//  springIntegrationVersion = "6.2.1"
+//
+//  lombokVersion = "1.18.30"
+//  guavaVersion = "33.0.0-jre"
+//  caffeineVersion = '3.1.8'
+//  fastjson2Version = "2.0.47"
+//  commonsIOVersion = "2.15.1"
+//  commonsLang3Version = "3.14.0"
+//  slf4jVersion = "2.0.11"
+//  hutoolVersion = "5.8.25"
+//  cglibVersion = "3.3.0"
+//  nettyAllVersion = "4.1.106.Final"
+//}
+
+// build后加载
+afterEvaluate {
+  trying({
+    def ma = project.ext.manifestAttributes as Map
+    jar { manifest.attributes(ma) }
+    sourceJar { manifest.attributes(ma) }
+    javadocJar { manifest.attributes(ma) }
+  })
+}
+
+if (!trying({ project.ext.springEnv }, false)) {
+  trying({ project.ext.springEnv = plugins.stream().anyMatch(p -> p.class.simpleName.contains("SpringBootPlugin")) })
+}
+
+java {
+  sourceCompatibility = trying({ javaVersion }, JavaVersion.VERSION_11)
+  targetCompatibility = trying({ javaVersion }, JavaVersion.VERSION_11)
+}
+
+compileJava {
+  options.compilerArgs << '-parameters' // 防止方法的参数名变成 arg0、arg1...
+}
+
+compileTestJava {
+  options.compilerArgs << '-parameters' // 防止方法的参数名变成 arg0、arg1...
+}
+
+tasks.withType(JavaCompile).configureEach {
+  options.encoding = "UTF-8"
+}
+
+tasks.withType(Javadoc).configureEach {
+  options.encoding = "UTF-8"
+  options.addStringOption('Xdoclint:none', '-quiet')
+  options.addStringOption('encoding', 'UTF-8')
+  options.addStringOption('charset', 'UTF-8')
+}
+
+trying({
+  jar {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from project.sourceSets.main.resources
+  }
+
+  tasks.register('sourceJar', Jar) {
+    dependsOn classes
+    archiveClassifier = 'sources'
+    from project.sourceSets.main.allSource
+  }
+
+  tasks.register('javadocJar', Jar) {
+    dependsOn javadoc
+    archiveClassifier = 'javadoc'
+    from javadoc.destinationDir
+  }
+
+  // 拷贝所有依赖的Jar包到lib目录下
+  tasks.register('copyJars', Copy) {
+    from configurations.runtimeClasspath
+    into "${buildDir}/libs/lib" // 目标位置
+  }
+
+  processResources {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    project.sourceSets.main.allSource.forEach {
+      it
+      from(it) {
+        exclude '**/*.java'
+        exclude '**/*.kt'
+        exclude '**/*.groovy'
+        exclude '**/licence.txt'
+        include '**/**'
+      }
+    }
+  }
+
+  processTestResources {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    project.sourceSets.test.allSource.forEach {
+      from(it) {
+        exclude '**/*.java'
+        exclude '**/*.kt'
+        exclude '**/*.groovy'
+        exclude '**/licence.txt'
+        include '**/**'
+      }
+    }
+  }
+
+})
+
+artifacts {
+  archives jar
+  archives sourceJar
+  archives javadocJar
+}
+
+configurations {
+  if (springEnv) {
+    developmentOnly
+    runtimeClasspath {
+      extendsFrom developmentOnly
+    }
+  }
+  compileOnly {
+    extendsFrom annotationProcessor
+  }
+}
+
+repositories {
+  mavenLocal()
+  maven { url("https://maven.aliyun.com/repository/google") }
+  maven { url("https://maven.aliyun.com/repository/central") }
+  maven { url("https://maven.aliyun.com/repository/gradle-plugin") }
+  maven { url("https://maven.aliyun.com/repository/public") }
+  maven { url("https://maven.aliyun.com/repository/jcenter") }
+  maven { url('https://repo.spring.io/milestone') }
+  maven { url('https://repo.spring.io/release') }
+  maven { url('https://oss.sonatype.org/content/repositories/snapshots/') }
+  mavenCentral()
+
+  trying({
+    maven {
+      url = props["repoUrl"]
+      allowInsecureProtocol = true
+      credentials {
+        username props["repoUsername"]
+        password props["repoPassword"]
+      }
+    }
+  })
+}
+
+dependencies {
+  compileOnly fileTree(dir: 'libs/source', include: ['*.jar'])
+  def useApi = trying({ project.ext.useApi }, false)
+  [
+      fileTree(dir: 'libs', include: ['*.jar']),
+      fileTree(dir: 'libs/jar', include: ['*.jar'])
+  ].forEach {
+    useApi ? api(it) : implementation(it)
+  }
+
+  api "org.projectlombok:lombok:${lombokVersion}"
+  annotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+  testAnnotationProcessor "org.projectlombok:lombok:${lombokVersion}"
+  [
+      "org.slf4j:slf4j-api:${slf4jVersion}",
+      "ch.qos.logback:logback-classic:1.5.6",
+      'com.google.code.findbugs:jsr305:3.0.2',
+      "commons-io:commons-io:${commonsIOVersion}",
+      "org.apache.commons:commons-lang3:${commonsLang3Version}",
+      "com.google.guava:guava:${guavaVersion}",
+      //"com.github.ben-manes.caffeine:caffeine:${caffeineVersion}",
+      "com.alibaba.fastjson2:fastjson2:${fastjson2Version}",
+      //"cn.hutool:hutool-all:${hutoolVersion}",
+      //"cglib:cglib:${cglibVersion}",
+  ].forEach {
+    if (!it.isBlank()) {
+      if(useApi) {
+        api(it) {
+          exclude group: 'org.slf4j', module: 'slf4j-log4j12'
+        }
+      } else {
+        implementation(it) {
+          exclude group: 'org.slf4j', module: 'slf4j-log4j12'
+        }
+      }
+      testImplementation(it)
+    }
+  }
+
+  [
+      "com.fasterxml.jackson.core:jackson-databind:${jacksonVersion}",
+      "com.fasterxml.jackson.core:jackson-annotations:${jacksonVersion}",
+      "org.springframework.boot:spring-boot-starter:${springbootVersion}",
+  ].forEach {
+    compileOnly(it)
+  }
+
+
+  if (project.ext.springEnv) {
+    //developmentOnly "org.springframework.boot:spring-boot-devtools:${springbootVersion}"
+    annotationProcessor "org.springframework.boot:spring-boot-configuration-processor:${springbootVersion}"
+    [
+        "org.springframework.boot:spring-boot-starter:${springbootVersion}",
+    ].forEach {
+      useApi ? api(it) : implementation(it)
+      testImplementation(it)
+    }
+    testImplementation "org.springframework.boot:spring-boot-starter-test:${springbootVersion}"
+  } else {
+    def version = "5.10.2"
+    [
+        // springboot下，此依赖会导致单元测试无用执行(fix bug)
+        "org.junit.jupiter:junit-jupiter-api:$version",
+        "org.junit.jupiter:junit-jupiter-engine:$version",
+        "org.junit.vintage:junit-vintage-engine:$version",
+        "org.junit.platform:junit-platform-launcher:1.10.2",
+    ].forEach {
+      testImplementation(it)
+    }
+  }
+
+}
+
+tasks.named('test') {
+  useJUnitPlatform()
+}
+
+afterEvaluate {
+  try {
+    if (project.ext.versionFlag) {
+      def path = sourceSets.main.resources.srcDirs
+          .stream()
+          .filter({ it2 -> it2.getName().equalsIgnoreCase("resources") })
+          .findFirst()
+          .orElse(sourceSets.main.resources.srcDirs[0])
+          .getAbsolutePath()
+      def file = new File(path, "version.properties")
+      file.text = "build.version=${version}" +
+          "\nbuild.date=${new Date().format('yyyy-MM-dd HH:mm')}"
+    }
+  } catch (ignored) {/* ^_^ */
+  }
+}
+
+
+afterEvaluate {
+
+  //-----------------------------------------------------------------------------
+  // 打包到一个jar中
+  trying({
+    if (trying({ project.ext.allInOne }, false)) {
+      def rootDirPath = getRootDir().getAbsolutePath()
+      jar {
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+        // compileClasspath、runtimeClasspath、testCompileClasspath、testRuntimeClasspath
+        def current = getProject()
+        configurations.compileClasspath.collect {
+          def path = it.getAbsolutePath()
+          if (path.startsWith(rootDirPath) && !(it.isFile() && path.endsWith(".jar"))) {
+            if (it.exists()) {
+              //zipTree(project.sourceSets.main.resources)
+              from it.isDirectory() ? it : zipTree(it)
+              def project = findProject(getRootProject(), path)
+              if (project != null) {
+                from project.sourceSets.main.resources // 包含resources目录下的文件
+              }
+            }
+          }
+        }
+      }
+
+      sourceJar {
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+        // compileClasspath、runtimeClasspath、testCompileClasspath、testRuntimeClasspath
+        configurations.compileClasspath.collect {
+          if (it.getAbsolutePath().startsWith(rootDirPath)) {
+            def path = it.getAbsolutePath()
+            def project = findProject(getRootProject(), path)
+            if (project != null) {
+              from project.sourceSets.main.allSource
+              from project.sourceSets.main.resources
+            }
+          }
+        }
+      }
+
+      artifacts {
+        archives sourceJar
+        archives javadocJar
+      }
+    }
+  })
+
+
+  //-----------------------------------------------------------------------------
+  // 上传到nexus
+  trying({
+    if (upload) {
+      apply plugin: 'maven-publish'
+
+      def props = new Properties()
+      props.load(file("${rootDir}/nexus.properties").newReader("UTF-8"))
+
+      afterEvaluate {
+        publishing {
+          publications {
+            maven(MavenPublication) {
+
+              groupId "${project.ext.groupId}"
+              artifactId "${trying({ project.ext.artifactPrefix }, '')}${trying({ archivesBaseName }, project.name, true)}"
+              version "$versionId"
+
+              //afterEvaluate { artifactId = "${project.ext.artifactPrefix}${project.ext.archivesBaseName}" }
+
+              from components.java
+              // 配置上传源码
+              artifact sourceJar
+              artifact javadocJar
+            }
+          }
+
+          repositories {
+            maven {
+              url = "${project.ext.versionId}".endsWith('-SNAPSHOT') ? trying({ repoSnapshot }) : trying({ repoRelease })
+              if (!url.toString().startsWith('file:/')) {
+                allowInsecureProtocol = true
+                credentials {
+                  username trying({ repoUsername })
+                  password trying({ repoPassword })
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  })
+}
+
+
+static <V> V trying(java.util.concurrent.Callable<V> call, V defaultValue = null, def print = false) {
+  try {
+    return call.call()
+  } catch (Exception e) {
+    if (print) {
+      e.printStackTrace()
+    }
+    return defaultValue
+  }
+}
+
+static void tryElse(Runnable r1, Runnable r2) {
+  try {
+    r1.run()
+  } catch (Exception ignored) {
+    r2.run()
+  }
+}
+
+
+/**
+ * 查找项目
+ *
+ * @param root 根项目
+ * @param path 查找项目的路径
+ * @return 返回查找到的项目
+ */
+static Project findProject(Project root, String path) {
+  for (def p : root.subprojects) {
+    if (path.startsWith(p.getBuildDir().getAbsolutePath())) {
+      return p
+    } else {
+      if (!p.subprojects.isEmpty()) {
+        def project = findProject(p, path)
+        if (project != null) {
+          return project
+        }
+      }
+    }
+  }
+  return null
+}

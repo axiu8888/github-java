@@ -1,0 +1,103 @@
+ext {
+  springbootVersion = "2.7.17"
+  springDependencyManagementVersion = "1.0.15.RELEASE"
+  springIntegrationVersion = "5.5.19"
+
+//  springbootVersion = "3.2.2"
+//  springDependencyManagementVersion = "1.1.4"
+//  springIntegrationVersion = "6.2.1"
+
+  lombokVersion = "1.18.30"
+  jacksonVersion = "2.16.1"
+  guavaVersion = "33.1.0-jre"
+//  caffeineVersion = '3.1.8'
+  caffeineVersion = '3.0.0'
+  fastjson2Version = "2.0.49"
+  commonsIOVersion = "2.16.1"
+  commonsLang3Version = "3.14.0"
+  slf4jVersion = "2.0.11"
+  hutoolVersion = "5.8.27"
+  cglibVersion = "3.3.0"
+  nettyAllVersion = "4.1.109.Final"
+
+  aspectjVersion = "1.9.20"
+  swaggerVersion = "3.0.0"
+  knife4jVersion = "4.3.0"
+  jjwtVersion = "0.12.3"
+  vertxVersion = "4.5.7"
+
+  rxJavaVersion = '3.1.8'
+  okHttpVersion = '4.12.0'
+  retrofitVersion = '2.11.0'
+
+  mysqlVersion = "8.2.0"
+  postgresqlVersion = "42.7.3"
+  druidVersion = "1.2.20"
+  mybatisPlusVersion = "3.5.4.1"
+  pagehelperVersion = "2.0.0"
+
+  props = new Properties()
+  try {
+    props.load(new FileReader("${rootDir}/nexus.properties"))
+    props.forEach(ext::set)
+  } catch (ignored) {/*^_^*/}
+
+}
+
+subprojects {
+
+  apply plugin: 'java'
+
+  group = 'com.benefitj.github'
+  version = "1.0.0-SNAPSHOT"
+
+  ext {
+    javaVersion = JavaVersion.VERSION_11
+    scriptFile = "${rootDir}/buildScript/base.gradle"
+    //scriptFile = "https://gitee.com/axiu8888/GradleBuild/raw/main/Java/base.gradle"
+
+    groupId = "$group"
+    artifactPrefix = ""
+    artifactId = "${archivesBaseName}"
+    versionId = "${version}"
+
+    manifestAttributes = [
+        "version"   : "$version",
+        "build-date": "${new Date().format('yyyy-MM-dd')}",
+        "author"    : "axiu8888",
+        "home"      : "https://github.com/axiu8888/${rootProject.name}",
+    ]
+  }
+
+  dependencies {
+//		def commons = project(":commons");
+//		if (!project.equals(commons)) {
+//			compileOnly(commons)
+//			testImplementation(commons)
+//		}
+  }
+
+  repositories {
+    //mavenLocal()
+    maven { url "https://maven.aliyun.com/repository/google" }
+    maven { url "https://maven.aliyun.com/repository/central" }
+    maven { url "https://maven.aliyun.com/repository/gradle-plugin" }
+    maven { url "https://maven.aliyun.com/repository/public" }
+    maven { url "https://maven.aliyun.com/repository/jcenter" }
+    maven { url "https://repo.spring.io/milestone" }
+    maven { url "https://repo.spring.io/release" }
+    maven { url "https://oss.sonatype.org/content/repositories/snapshots/" }
+    mavenCentral()
+    try {
+      maven {
+        url = props["repoUrl"]
+        allowInsecureProtocol = true
+        credentials {
+          username props["repoUsername"]
+          password props["repoPassword"]
+        }
+      }
+    } catch(ignored) {/*^_^*/}
+  }
+
+}
